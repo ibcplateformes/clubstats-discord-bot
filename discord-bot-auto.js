@@ -2,6 +2,24 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { PrismaClient } = require('@prisma/client');
 const cron = require('node-cron');
+const http = require('http');
+
+// Serveur HTTP simple pour éviter que Render mette en pause le service
+const PORT = process.env.PORT || 3000;
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    status: 'online',
+    bot: 'Kay Voter',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  }));
+});
+
+server.listen(PORT, () => {
+  console.log(`🌐 Serveur HTTP démarré sur le port ${PORT}`);
+  console.log(`🔗 Keep-alive endpoint: http://localhost:${PORT}`);
+});
 
 const prisma = new PrismaClient();
 
