@@ -1,0 +1,28 @@
+{
+  "name": "clubstats-discord-bot",
+  "version": "1.0.0",
+  "description": "Bot Discord pour les rappels de vote ClubStats Pro",
+  "main": "bot/discord-bot.js",
+  "scripts": {
+    "bot": "node bot/discord-bot.js",
+    "bot:dev": "nodemon bot/discord-bot.js",
+    "bot:pm2": "pm2 start bot/discord-bot.js --name discord-vote-bot",
+    "bot:stop": "pm2 stop discord-vote-bot",
+    "bot:restart": "pm2 restart discord-vote-bot",
+    "bot:logs": "pm2 logs discord-vote-bot",
+    "auto-reminder": "pm2 start bot/auto-reminder.js --name auto-reminder",
+    "auto-reminder:stop": "pm2 stop auto-reminder"
+  },
+  "keywords": ["discord", "bot", "clubstats", "vote", "reminder"],
+  "author": "ClubStats Pro",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "@prisma/client": "^5.0.0",
+    "node-schedule": "^2.1.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
