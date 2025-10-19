@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Club {
+  id        String   @id @default(cuid())
+  eaClubId  String   @unique @map("ea_club_id")
+  name      String
+  platform  String
+  region    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  players   Player[]
+  voteSessions  VoteSession[]
+
+  @@map("clubs")
+}
+
+model Player {
+  id            String              @id @default(cuid())
+  eaPlayerId    String              @unique @map("ea_player_id")
+  clubId        String              @map("club_id")
+  name          String
+  position      String?
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  club          Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  playerVotes   PlayerVote[]
+
+  @@index([clubId])
+  @@map("players")
+}
+
+model VoteSession {
+  id              String   @id @default(cuid())
+  clubId          String   @map("club_id")
+  title           String
+  type            String
+  date            DateTime
+  timezoneFrance  String   @default("Europe/Paris") @map("timezone_france")
+  timezoneSenegal String   @default("Africa/Dakar") @map("timezone_senegal")
+  location        String?
+  description     String?  @db.Text
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  club            Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  votes           PlayerVote[]
+
+  @@index([clubId])
+  @@index([date])
+  @@index([type])
+  @@map("vote_sessions")
+}
+
+model PlayerVote {
+  id              String       @id @default(cuid())
+  voteSessionId   String       @map("vote_session_id")
+  playerId        String       @map("player_id")
+  status          String
+  reason          String?      @db.Text
+  votedAt         DateTime     @default(now()) @map("voted_at")
+  fingerprint     String?
+  userAgent       String?      @map("user_agent")
+  
+  voteSession     VoteSession  @relation(fields: [voteSessionId], references: [id], onDelete: Cascade)
+  player          Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([voteSessionId, playerId])
+  @@index([voteSessionId])
+  @@index([playerId])
+  @@map("player_votes")
+}
