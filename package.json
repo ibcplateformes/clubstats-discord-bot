@@ -4,7 +4,8 @@
   "description": "Bot Discord pour les rappels de vote ClubStats",
   "main": "discord-bot-auto.js",
   "scripts": {
-    "start": "node discord-bot-auto.js"
+    "start": "node discord-bot-auto.js",
+    "start:polls": "node discord-bot-polls.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
