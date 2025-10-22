@@ -66,7 +66,7 @@ async function getActiveSessions() {
 }
 
 // Envoyer un vote à l'API
-async function sendVoteToAPI(sessionId, discordUsername, response, comment = null) {
+async function sendVoteToAPI(sessionId, discordId, discordUsername, response, comment = null) {
   try {
     const voteResponse = await fetch(`${API_URL}/api/discord/sync-vote`, {
       method: 'POST',
@@ -76,6 +76,7 @@ async function sendVoteToAPI(sessionId, discordUsername, response, comment = nul
       },
       body: JSON.stringify({
         sessionId,
+        discordId,
         discordUsername,
         response,
         comment
@@ -192,12 +193,13 @@ client.on('interactionCreate', async (interaction) => {
 
   const [, response, sessionId] = interaction.customId.split('_');
   const username = interaction.user.username;
+  const userId = interaction.user.id;
 
-  console.log(`📝 Vote reçu: ${username} -> ${response} pour session ${sessionId}`);
+  console.log(`📝 Vote reçu: ${username} (ID: ${userId}) -> ${response} pour session ${sessionId}`);
 
   try {
-    // Envoyer le vote à l'API
-    const result = await sendVoteToAPI(sessionId, username, response);
+    // Envoyer le vote à l'API avec l'ID Discord
+    const result = await sendVoteToAPI(sessionId, userId, username, response);
 
     if (result.success) {
       const responseText = {
