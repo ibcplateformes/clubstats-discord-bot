@@ -402,7 +402,7 @@ async function syncDiscordMembers() {
     const guilds = client.guilds.cache;
     
     if (guilds.size === 0) {
-      console.log('⚠️  Le bot n'est dans aucun serveur');
+      console.log('⚠️  Le bot n\'est dans aucun serveur');
       return;
     }
 
