@@ -396,8 +396,7 @@ function startAutomaticPolls() {
 
 async function syncDiscordMembers() {
   try {
-    console.log('
-👥 Synchronisation des membres Discord...');
+    console.log('👥 Synchronisation des membres Discord...');
     
     // Récupérer tous les serveurs (guilds) du bot
     const guilds = client.guilds.cache;
