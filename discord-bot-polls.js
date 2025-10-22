@@ -135,7 +135,7 @@ function createPollEmbed(session) {
     embed.addFields({ name: '📝 Description', value: session.description, inline: false });
   }
 
-  embed.setFooter({ text: `ID: ${session.id}` })
+  embed.setFooter({ text: `ID: ${session.id} | Aujourd'hui à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` })
        .setTimestamp();
 
   return embed;
@@ -208,7 +208,7 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({
         content: `✅ Ton vote **"${responseText}"** a été enregistré avec succès !`,
-        ephemeral: true // Message visible uniquement par l'utilisateur
+        ephemeral: true
       });
 
       console.log(`✅ Vote enregistré: ${username} -> ${response}`);
@@ -274,7 +274,7 @@ client.on('messageCreate', async (message) => {
 
       for (const session of sessions) {
         await createPollForSession(message.channel, session);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Éviter le rate limit
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       await message.react('✅');
@@ -388,6 +388,58 @@ function startAutomaticPolls() {
 }
 
 // ========================================
+// NETTOYAGE AUTOMATIQUE DES SESSIONS
+// ========================================
+
+async function archiveOldSessions() {
+  try {
+    console.log('\n🧹 Nettoyage automatique des sessions passées...');
+    
+    const response = await fetch(`${API_URL}/api/cron/archive-sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY
+      }
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      console.log(`✅ ${result.archived} session(s) archivée(s)`);
+      
+      // Envoyer un message dans le canal si des sessions ont été archivées
+      if (result.archived > 0 && CHANNEL_ID) {
+        try {
+          const channel = await client.channels.fetch(CHANNEL_ID);
+          if (channel) {
+            await channel.send(`🧹 Nettoyage automatique : ${result.archived} session(s) passée(s) archivée(s).`);
+          }
+        } catch (channelError) {
+          console.log('ℹ️ Impossible d\'envoyer le message de nettoyage dans le canal');
+        }
+      }
+    } else {
+      console.error('❌ Erreur lors de l\'archivage:', response.status);
+    }
+  } catch (error) {
+    console.error('❌ Erreur lors du nettoyage:', error);
+  }
+}
+
+// Programmer le nettoyage automatique
+function startAutomaticCleanup() {
+  // Tous les jours à 6h du matin
+  cron.schedule('0 6 * * *', () => {
+    console.log('\n⏰ Déclenchement du nettoyage automatique (6h00)');
+    archiveOldSessions();
+  }, {
+    timezone: "Europe/Paris"
+  });
+
+  console.log('✅ Nettoyage automatique programmé (6h00 tous les jours)');
+}
+
+// ========================================
 // DÉMARRAGE
 // ========================================
 
@@ -399,9 +451,11 @@ client.once('ready', () => {
   console.log('✅ Le bot est opérationnel !');
   console.log('');
   console.log('⏰ Rappels automatiques : 10h, 14h, 18h (heure de Paris)');
+  console.log('🧹 Nettoyage automatique : 6h00 (heure de Paris)');
   console.log('');
   
   startAutomaticPolls();
+  startAutomaticCleanup();
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
