@@ -37,6 +37,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers, // Pour récupérer les membres
   ],
 });
 
@@ -390,6 +391,64 @@ function startAutomaticPolls() {
 }
 
 // ========================================
+// SYNCHRONISATION DES MEMBRES DISCORD
+// ========================================
+
+async function syncDiscordMembers() {
+  try {
+    console.log('
+👥 Synchronisation des membres Discord...');
+    
+    // Récupérer tous les serveurs (guilds) du bot
+    const guilds = client.guilds.cache;
+    
+    if (guilds.size === 0) {
+      console.log('⚠️  Le bot n'est dans aucun serveur');
+      return;
+    }
+
+    // Prendre le premier serveur (en général il n'y en a qu'un)
+    const guild = guilds.first();
+    
+    if (!guild) return;
+
+    console.log(`🏛️  Serveur: ${guild.name} (${guild.memberCount} membres)`);
+
+    // Récupérer tous les membres
+    await guild.members.fetch();
+    
+    const members = guild.members.cache
+      .filter(member => !member.user.bot) // Exclure les bots
+      .map(member => ({
+        id: member.user.id,
+        username: member.user.username,
+        displayName: member.displayName,
+        avatar: member.user.displayAvatarURL()
+      }));
+
+    console.log(`👤 ${members.length} membres récupérés (hors bots)`);
+
+    // Envoyer à l'API
+    const response = await fetch(`${API_URL}/api/discord/members`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY
+      },
+      body: JSON.stringify({ members })
+    });
+
+    if (response.ok) {
+      console.log(`✅ Membres synchronisés avec l'API`);
+    } else {
+      console.error('❌ Erreur lors de la synchronisation:', response.status);
+    }
+  } catch (error) {
+    console.error('❌ Erreur lors de la synchronisation des membres:', error);
+  }
+}
+
+// ========================================
 // NETTOYAGE AUTOMATIQUE DES SESSIONS
 // ========================================
 
@@ -455,6 +514,9 @@ client.once('ready', () => {
   console.log('⏰ Rappels automatiques : 10h, 14h, 18h (heure de Paris)');
   console.log('🧹 Nettoyage automatique : 6h00 (heure de Paris)');
   console.log('');
+  
+  // Synchroniser les membres Discord au démarrage
+  syncDiscordMembers();
   
   startAutomaticPolls();
   startAutomaticCleanup();
