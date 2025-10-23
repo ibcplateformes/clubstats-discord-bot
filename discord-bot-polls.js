@@ -536,12 +536,12 @@ client.on('messageCreate', async (message) => {
         // Envoyer le code en message privé
         try {
           await message.author.send(
-            `🔐 **Ton code PIN pour voter**\n\n` +
+            '🔐 **Ton code PIN pour voter**\n\n' +
             `👤 Compte Discord : ${username}\n` +
             `🎮 Joueur mappé : ${data.playerName}\n` +
-            `🔢 **Code PIN : `${data.pin}`**\n\n` +
+            `🔢 **Code PIN : ${data.pin}**\n\n` +
             `Utilise ce code sur ${API_URL} pour voter aux sessions !\n\n` +
-            `⚠️ Ne partage jamais ce code avec quelqu'un d'autre.`
+            '⚠️ Ne partage jamais ce code avec quelqu\'un d\'autre.'
           );
           await message.reply('✅ Je t\'ai envoyé ton code PIN en message privé !');
         } catch (dmError) {
