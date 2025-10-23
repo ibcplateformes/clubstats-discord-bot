@@ -518,6 +518,11 @@ client.on('messageCreate', async (message) => {
       const discordId = message.author.id;
       const username = message.author.username;
 
+      console.log(`🔑 Récupération du PIN pour ${username} (ID: ${discordId})`);
+      console.log(`🔗 URL: ${API_URL}/api/discord/get-pin?discordId=${discordId}`);
+      console.log(`🔐 API_KEY présente: ${API_KEY ? 'Oui' : 'Non'}`);
+      console.log(`🔐 API_KEY (10 premiers): ${API_KEY ? API_KEY.substring(0, 10) : 'N/A'}`);
+
       // Récupérer le code PIN depuis l'API
       const response = await fetch(`${API_URL}/api/discord/get-pin?discordId=${discordId}`, {
         headers: {
@@ -525,8 +530,11 @@ client.on('messageCreate', async (message) => {
         }
       });
 
+      console.log(`📡 Réponse API status: ${response.status}`);
+
       if (!response.ok) {
         const error = await response.json();
+        console.error(`❌ Erreur API:`, error);
         return message.reply(`❌ ${error.error || 'Impossible de récupérer ton code PIN.'}`);
       }
 
