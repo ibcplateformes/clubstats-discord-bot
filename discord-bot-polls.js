@@ -3,16 +3,45 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const cron = require('node-cron');
 const http = require('http');
 
-// Serveur HTTP pour keep-alive
+// Serveur HTTP pour keep-alive et webhooks
 const PORT = process.env.PORT || 10000;
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
-    status: 'online',
-    bot: 'Kay Voter Poll',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString()
-  }));
+const server = http.createServer(async (req, res) => {
+  // Webhook pour recevoir les notifications de sessions
+  if (req.method === 'POST' && req.url === '/webhook/session') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        const { sessionId, action } = data;
+        
+        console.log(`🔔 Notification reçue: ${action} - Session ${sessionId}`);
+        
+        // Créer ou mettre à jour le sondage Discord
+        if (action === 'created' || action === 'updated') {
+          await handleSessionNotification(sessionId);
+        }
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (error) {
+        console.error('❌ Erreur webhook:', error);
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Internal error' }));
+      }
+    });
+  } else {
+    // Keep-alive endpoint
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'online',
+      bot: 'Kay Voter Poll',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString()
+    }));
+  }
 });
 
 server.listen(PORT, () => {
@@ -37,7 +66,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers, // Pour récupérer les membres
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
@@ -45,7 +74,6 @@ const client = new Client({
 // FONCTIONS API
 // ========================================
 
-// Récupérer les sessions actives depuis l'API
 async function getActiveSessions() {
   try {
     const response = await fetch(`${API_URL}/api/discord/sessions`, {
@@ -66,7 +94,6 @@ async function getActiveSessions() {
   }
 }
 
-// Envoyer un vote à l'API
 async function sendVoteToAPI(sessionId, discordId, discordUsername, response, comment = null) {
   try {
     const voteResponse = await fetch(`${API_URL}/api/discord/sync-vote`, {
@@ -92,6 +119,35 @@ async function sendVoteToAPI(sessionId, discordId, discordUsername, response, co
     return await voteResponse.json();
   } catch (error) {
     console.error('❌ Erreur lors de l\'envoi du vote:', error);
+    throw error;
+  }
+}
+
+async function createSessionOnSite(title, type, date, location, description = null) {
+  try {
+    const response = await fetch(`${API_URL}/api/vote-sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY
+      },
+      body: JSON.stringify({
+        title,
+        type,
+        date,
+        location,
+        description
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'API error');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('❌ Erreur lors de la création de la session:', error);
     throw error;
   }
 }
@@ -131,6 +187,28 @@ function createPollEmbed(session) {
   if (totalVotes > 0) {
     const stats = `✅ Présents: ${session.stats.present}\n❌ Absents: ${session.stats.absent}\n🟡 Retard: ${session.stats.late}\n❓ Peut-être: ${session.stats.maybe}`;
     embed.addFields({ name: '📊 Statistiques', value: stats, inline: false });
+    
+    // Ajouter la liste des votants
+    if (session.voters && session.voters.length > 0) {
+      const presentVoters = session.voters.filter(v => v.response === 'present').map(v => v.name);
+      const absentVoters = session.voters.filter(v => v.response === 'absent').map(v => v.name);
+      const lateVoters = session.voters.filter(v => v.response === 'late').map(v => v.name);
+      
+      let votersList = '';
+      if (presentVoters.length > 0) {
+        votersList += `✅ **Présents (${presentVoters.length}):**\n${presentVoters.join(', ')}\n\n`;
+      }
+      if (lateVoters.length > 0) {
+        votersList += `🟡 **En retard (${lateVoters.length}):**\n${lateVoters.join(', ')}\n\n`;
+      }
+      if (absentVoters.length > 0) {
+        votersList += `❌ **Absents (${absentVoters.length}):**\n${absentVoters.join(', ')}`;
+      }
+      
+      if (votersList) {
+        embed.addFields({ name: '👥 Liste des votes', value: votersList, inline: false });
+      }
+    }
   }
 
   if (session.description) {
@@ -183,13 +261,46 @@ async function createPollForSession(channel, session) {
 }
 
 // ========================================
+// GESTION DES NOTIFICATIONS DE SESSIONS
+// ========================================
+
+async function handleSessionNotification(sessionId) {
+  try {
+    console.log(`📢 Création du sondage pour la session ${sessionId}...`);
+    
+    const sessions = await getActiveSessions();
+    const session = sessions.find(s => s.id === sessionId);
+    
+    if (!session) {
+      console.error(`❌ Session ${sessionId} introuvable`);
+      return;
+    }
+    
+    if (!CHANNEL_ID) {
+      console.error('❌ CHANNEL_ID non configuré');
+      return;
+    }
+    
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (!channel) {
+      console.error('❌ Canal Discord introuvable');
+      return;
+    }
+    
+    await createPollForSession(channel, session);
+    console.log(`✅ Sondage créé automatiquement pour: ${session.title}`);
+  } catch (error) {
+    console.error('❌ Erreur lors de la création automatique du sondage:', error);
+  }
+}
+
+// ========================================
 // GESTION DES VOTES (BOUTONS)
 // ========================================
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
-  // Vérifier si c'est un bouton de vote
   if (!interaction.customId.startsWith('vote_')) return;
 
   const [, response, sessionId] = interaction.customId.split('_');
@@ -199,7 +310,6 @@ client.on('interactionCreate', async (interaction) => {
   console.log(`📝 Vote reçu: ${username} (ID: ${userId}) -> ${response} pour session ${sessionId}`);
 
   try {
-    // Envoyer le vote à l'API avec l'ID Discord
     const result = await sendVoteToAPI(sessionId, userId, username, response);
 
     if (result.success) {
@@ -216,7 +326,6 @@ client.on('interactionCreate', async (interaction) => {
 
       console.log(`✅ Vote enregistré: ${username} -> ${response}`);
 
-      // Mettre à jour le message du sondage
       await updatePollMessage(interaction.message, sessionId);
     } else {
       await interaction.reply({
@@ -233,7 +342,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// Mettre à jour le message du sondage avec les nouvelles stats
 async function updatePollMessage(message, sessionId) {
   try {
     const sessions = await getActiveSessions();
@@ -264,7 +372,75 @@ client.on('messageCreate', async (message) => {
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
-  // Commande: !polls - Créer des sondages pour toutes les sessions actives
+  // Commande: !createpoll - Créer une session depuis Discord
+  if (command === 'createpoll' || command === 'createsession') {
+    try {
+      const fullText = message.content.slice(PREFIX.length + command.length).trim();
+      
+      if (!fullText) {
+        return message.reply(`❌ **Format invalide !**\n\nUtilise ce format :\n\`!createpoll Titre, AAAA-MM-JJ HH:MM, Lieu\`\n\n**Exemple :**\n\`!createpoll Match vs FC Goro, 2025-10-25 15:00, Stade Municipal\``);
+      }
+      
+      const parts = fullText.split(',').map(p => p.trim());
+      
+      if (parts.length < 3) {
+        return message.reply(`❌ **Format invalide !**\n\nIl manque des informations. Utilise ce format :\n\`!createpoll Titre, AAAA-MM-JJ HH:MM, Lieu\`\n\n**Exemple :**\n\`!createpoll Match vs FC Goro, 2025-10-25 15:00, Stade Municipal\``);
+      }
+      
+      const title = parts[0];
+      const dateStr = parts[1];
+      const location = parts[2];
+      
+      // Valider et parser la date
+      const dateRegex = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})$/;
+      const match = dateStr.match(dateRegex);
+      
+      if (!match) {
+        return message.reply(`❌ **Format de date invalide !**\n\nUtilise le format : \`AAAA-MM-JJ HH:MM\`\n\n**Exemple :**\n\`2025-10-25 15:00\``);
+      }
+      
+      const [, year, month, day, hour, minute] = match;
+      const sessionDate = new Date(`${year}-${month}-${day}T${hour}:${minute}:00.000Z`);
+      
+      if (isNaN(sessionDate.getTime())) {
+        return message.reply(`❌ **Date invalide !**\n\nVérifie que la date est correcte.`);
+      }
+      
+      // Déterminer le type automatiquement selon des mots-clés
+      let type = 'training';
+      const titleLower = title.toLowerCase();
+      if (titleLower.includes('match') || titleLower.includes('vs')) {
+        type = 'match';
+      } else if (titleLower.includes('tournoi') || titleLower.includes('tournament')) {
+        type = 'tournament';
+      } else if (titleLower.includes('amical') || titleLower.includes('friendly')) {
+        type = 'friendly';
+      }
+      
+      await message.reply('⏳ Création de la session en cours...');
+      
+      const result = await createSessionOnSite(title, type, sessionDate.toISOString(), location);
+      
+      if (result.success || result.session) {
+        const sessionId = result.session?.id || result.id;
+        
+        const sessions = await getActiveSessions();
+        const session = sessions.find(s => s.id === sessionId);
+        
+        if (session) {
+          await createPollForSession(message.channel, session);
+          await message.reply(`✅ **Session créée avec succès !**\n📝 ID: \`${sessionId}\`\n🗳️ Le sondage a été créé ci-dessus.`);
+        } else {
+          await message.reply(`✅ Session créée sur le site (ID: \`${sessionId}\`)\n⚠️ Utilise \`!polls\` pour créer le sondage.`);
+        }
+      }
+    } catch (error) {
+      console.error('Erreur création session:', error);
+      await message.reply(`❌ **Erreur lors de la création de la session.**\n\nDétails : ${error.message}`);
+    }
+  }
+
+  // Commande: !polls
   if (command === 'polls' || command === 'sondages') {
     try {
       const sessions = await getActiveSessions();
@@ -287,7 +463,7 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // Commande: !sessions - Liste des sessions
+  // Commande: !sessions
   if (command === 'sessions') {
     try {
       const sessions = await getActiveSessions();
@@ -324,6 +500,7 @@ client.on('messageCreate', async (message) => {
       .setTitle('🤖 Aide du Bot de Vote')
       .setDescription('Commandes disponibles :')
       .addFields(
+        { name: `${PREFIX}createpoll`, value: 'Créer une nouvelle session de vote\nFormat : `!createpoll Titre, AAAA-MM-JJ HH:MM, Lieu`\nExemple : `!createpoll Match vs FC Goro, 2025-10-25 15:00, Stade`', inline: false },
         { name: `${PREFIX}polls`, value: 'Créer des sondages avec boutons pour toutes les sessions actives', inline: false },
         { name: `${PREFIX}sessions`, value: 'Afficher la liste des sessions actives', inline: false },
         { name: `${PREFIX}aide`, value: 'Afficher ce message', inline: false }
@@ -367,21 +544,17 @@ async function sendAutomaticPolls() {
   }
 }
 
-// Programmer les rappels automatiques
 function startAutomaticPolls() {
-  // 10h00
   cron.schedule('0 10 * * *', () => {
     console.log('\n⏰ Rappel automatique 10h00');
     sendAutomaticPolls();
   }, { timezone: "Europe/Paris" });
 
-  // 14h00
   cron.schedule('0 14 * * *', () => {
     console.log('\n⏰ Rappel automatique 14h00');
     sendAutomaticPolls();
   }, { timezone: "Europe/Paris" });
 
-  // 18h00
   cron.schedule('0 18 * * *', () => {
     console.log('\n⏰ Rappel automatique 18h00');
     sendAutomaticPolls();
@@ -398,7 +571,6 @@ async function syncDiscordMembers() {
   try {
     console.log('👥 Synchronisation des membres Discord...');
     
-    // Récupérer tous les serveurs (guilds) du bot
     const guilds = client.guilds.cache;
     
     if (guilds.size === 0) {
@@ -406,18 +578,16 @@ async function syncDiscordMembers() {
       return;
     }
 
-    // Prendre le premier serveur (en général il n'y en a qu'un)
     const guild = guilds.first();
     
     if (!guild) return;
 
     console.log(`🏛️  Serveur: ${guild.name} (${guild.memberCount} membres)`);
 
-    // Récupérer tous les membres
     await guild.members.fetch();
     
     const members = guild.members.cache
-      .filter(member => !member.user.bot) // Exclure les bots
+      .filter(member => !member.user.bot)
       .map(member => ({
         id: member.user.id,
         username: member.user.username,
@@ -427,7 +597,6 @@ async function syncDiscordMembers() {
 
     console.log(`👤 ${members.length} membres récupérés (hors bots)`);
 
-    // Envoyer à l'API
     const response = await fetch(`${API_URL}/api/discord/members`, {
       method: 'POST',
       headers: {
@@ -467,7 +636,6 @@ async function archiveOldSessions() {
       const result = await response.json();
       console.log(`✅ ${result.archived} session(s) archivée(s)`);
       
-      // Envoyer un message dans le canal si des sessions ont été archivées
       if (result.archived > 0 && CHANNEL_ID) {
         try {
           const channel = await client.channels.fetch(CHANNEL_ID);
@@ -486,9 +654,7 @@ async function archiveOldSessions() {
   }
 }
 
-// Programmer le nettoyage automatique
 function startAutomaticCleanup() {
-  // Tous les jours à 6h du matin
   cron.schedule('0 6 * * *', () => {
     console.log('\n⏰ Déclenchement du nettoyage automatique (6h00)');
     archiveOldSessions();
@@ -514,7 +680,6 @@ client.once('ready', () => {
   console.log('🧹 Nettoyage automatique : 6h00 (heure de Paris)');
   console.log('');
   
-  // Synchroniser les membres Discord au démarrage
   syncDiscordMembers();
   
   startAutomaticPolls();
@@ -523,7 +688,6 @@ client.once('ready', () => {
 
 client.login(process.env.DISCORD_BOT_TOKEN);
 
-// Gestion des erreurs
 process.on('unhandledRejection', error => {
   console.error('❌ Erreur non gérée:', error);
 });
