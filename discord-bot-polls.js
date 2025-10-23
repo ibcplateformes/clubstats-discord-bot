@@ -73,6 +73,9 @@ const client = new Client({
 // Map pour stocker les IDs des messages Discord par session
 const sessionMessages = new Map(); // sessionId -> messageId
 
+// Map pour stocker les stats des sessions (pour détecter les changements)
+const sessionStats = new Map(); // sessionId -> { total, present, absent, late }
+
 // ========================================
 // FONCTIONS API
 // ========================================
@@ -759,6 +762,61 @@ function startAutomaticCleanup() {
 }
 
 // ========================================
+// POLLING AUTOMATIQUE DES SESSIONS
+// ========================================
+
+async function checkAndUpdateSessions() {
+  try {
+    if (!CHANNEL_ID) return;
+    
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (!channel) return;
+    
+    const sessions = await getActiveSessions();
+    
+    for (const session of sessions) {
+      const sessionId = session.id;
+      const currentStats = {
+        total: session.stats.total,
+        present: session.stats.present,
+        absent: session.stats.absent,
+        late: session.stats.late
+      };
+      
+      const previousStats = sessionStats.get(sessionId);
+      
+      // Vérifier si les stats ont changé
+      const hasChanged = !previousStats || 
+        previousStats.total !== currentStats.total ||
+        previousStats.present !== currentStats.present ||
+        previousStats.absent !== currentStats.absent ||
+        previousStats.late !== currentStats.late;
+      
+      if (hasChanged) {
+        console.log(`🔄 Changement détecté pour session ${session.title}:`, currentStats);
+        
+        // Mettre à jour les stats stockées
+        sessionStats.set(sessionId, currentStats);
+        
+        // Mettre à jour ou créer le message Discord
+        await handleSessionNotification(sessionId);
+      }
+    }
+  } catch (error) {
+    // Erreur silencieuse pour ne pas polluer les logs
+    if (!error.message.includes('fetch')) {
+      console.error('⚠️ Erreur polling:', error.message);
+    }
+  }
+}
+
+function startSessionPolling() {
+  // Polling toutes les 10 secondes
+  setInterval(checkAndUpdateSessions, 10000);
+  console.log('✅ Polling automatique activé (toutes les 10 secondes)');
+}
+
+// ========================================
 // DÉMARRAGE
 // ========================================
 
@@ -777,6 +835,7 @@ client.once('ready', async () => {
   
   startAutomaticPolls();
   startAutomaticCleanup();
+  startSessionPolling(); // Démarrer le polling automatique
   
   // Récupérer les messages récents pour remplir la Map
   if (CHANNEL_ID) {
