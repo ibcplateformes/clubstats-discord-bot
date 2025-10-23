@@ -762,7 +762,7 @@ function startAutomaticCleanup() {
 // DÉMARRAGE
 // ========================================
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log('🤖 Bot Discord prêt !');
   console.log(`📝 Connecté en tant que ${client.user.tag}`);
   console.log(`🔧 API: ${API_URL}`);
@@ -777,6 +777,39 @@ client.once('ready', () => {
   
   startAutomaticPolls();
   startAutomaticCleanup();
+  
+  // Récupérer les messages récents pour remplir la Map
+  if (CHANNEL_ID) {
+    try {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      if (channel) {
+        console.log('🔍 Recherche des sondages existants...');
+        const messages = await channel.messages.fetch({ limit: 50 });
+        
+        // Parcourir les messages du bot qui contiennent des sondages
+        messages.forEach(msg => {
+          if (msg.author.id === client.user.id && msg.embeds.length > 0) {
+            const embed = msg.embeds[0];
+            const footer = embed.footer?.text;
+            
+            // Extraire l'ID de la session depuis le footer (format: "ID: xxx | ...")
+            if (footer) {
+              const match = footer.match(/ID: ([a-z0-9]+)/);
+              if (match) {
+                const sessionId = match[1];
+                sessionMessages.set(sessionId, msg.id);
+                console.log(`💾 Sondage récupéré: ${sessionId} -> ${msg.id}`);
+              }
+            }
+          }
+        });
+        
+        console.log(`✅ ${sessionMessages.size} sondage(s) récupéré(s)`);
+      }
+    } catch (error) {
+      console.error('⚠️ Erreur lors de la récupération des sondages:', error);
+    }
+  }
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
