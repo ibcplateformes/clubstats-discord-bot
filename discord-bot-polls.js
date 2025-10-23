@@ -70,6 +70,9 @@ const client = new Client({
   ],
 });
 
+// Map pour stocker les IDs des messages Discord par session
+const sessionMessages = new Map(); // sessionId -> messageId
+
 // ========================================
 // FONCTIONS API
 // ========================================
@@ -253,11 +256,15 @@ async function createPollForSession(channel, session) {
   const embed = createPollEmbed(session);
   const buttons = createPollButtons(session.id);
 
-  await channel.send({
+  const sentMessage = await channel.send({
     content: `🗳️ **NOUVEAU SONDAGE** - Votez maintenant !`,
     embeds: [embed],
     components: [buttons]
   });
+  
+  // Stocker l'ID du message pour pouvoir le mettre à jour plus tard
+  sessionMessages.set(session.id, sentMessage.id);
+  console.log(`💾 Message Discord stocké pour session ${session.id}: ${sentMessage.id}`);
 }
 
 // ========================================
@@ -266,7 +273,7 @@ async function createPollForSession(channel, session) {
 
 async function handleSessionNotification(sessionId) {
   try {
-    console.log(`📢 Création du sondage pour la session ${sessionId}...`);
+    console.log(`📢 Traitement notification pour session ${sessionId}...`);
     
     const sessions = await getActiveSessions();
     const session = sessions.find(s => s.id === sessionId);
@@ -287,10 +294,34 @@ async function handleSessionNotification(sessionId) {
       return;
     }
     
-    await createPollForSession(channel, session);
-    console.log(`✅ Sondage créé automatiquement pour: ${session.title}`);
+    // Vérifier si un message existe déjà pour cette session
+    const existingMessageId = sessionMessages.get(sessionId);
+    
+    if (existingMessageId) {
+      // Mettre à jour le message existant
+      try {
+        const existingMessage = await channel.messages.fetch(existingMessageId);
+        const embed = createPollEmbed(session);
+        const buttons = createPollButtons(session.id);
+        
+        await existingMessage.edit({
+          embeds: [embed],
+          components: [buttons]
+        });
+        
+        console.log(`✅ Message Discord mis à jour pour: ${session.title}`);
+      } catch (error) {
+        console.error('⚠️ Message introuvable, création d\'un nouveau:', error.message);
+        // Si le message n'existe plus, en créer un nouveau
+        await createPollForSession(channel, session);
+      }
+    } else {
+      // Créer un nouveau message
+      await createPollForSession(channel, session);
+      console.log(`✅ Nouveau sondage créé pour: ${session.title}`);
+    }
   } catch (error) {
-    console.error('❌ Erreur lors de la création automatique du sondage:', error);
+    console.error('❌ Erreur lors du traitement de la notification:', error);
   }
 }
 
