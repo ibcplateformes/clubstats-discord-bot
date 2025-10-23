@@ -503,12 +503,66 @@ client.on('messageCreate', async (message) => {
         { name: `${PREFIX}createpoll`, value: 'Créer une nouvelle session de vote\nFormat : `!createpoll Titre, AAAA-MM-JJ HH:MM, Lieu`\nExemple : `!createpoll Match vs FC Goro, 2025-10-25 15:00, Stade`', inline: false },
         { name: `${PREFIX}polls`, value: 'Créer des sondages avec boutons pour toutes les sessions actives', inline: false },
         { name: `${PREFIX}sessions`, value: 'Afficher la liste des sessions actives', inline: false },
+        { name: `${PREFIX}moncode`, value: 'Recevoir ton code PIN pour voter sur le site (message privé)', inline: false },
         { name: `${PREFIX}aide`, value: 'Afficher ce message', inline: false }
       )
       .setFooter({ text: 'ClubStats Pro - Bot Discord avec Sondages' })
       .setTimestamp();
 
     await message.reply({ embeds: [helpEmbed] });
+  }
+
+  // Commande: !moncode - Obtenir son code PIN
+  if (command === 'moncode' || command === 'pin' || command === 'code') {
+    try {
+      const discordId = message.author.id;
+      const username = message.author.username;
+
+      // Récupérer le code PIN depuis l'API
+      const response = await fetch(`${API_URL}/api/discord/get-pin?discordId=${discordId}`, {
+        headers: {
+          'x-api-key': API_KEY
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return message.reply(`❌ ${error.error || 'Impossible de récupérer ton code PIN.'}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.pin) {
+        // Envoyer le code en message privé
+        try {
+          await message.author.send(
+            `🔐 **Ton code PIN pour voter**\n\n` +
+            `👤 Compte Discord : ${username}\n` +
+            `🎮 Joueur mappé : ${data.playerName}\n` +
+            `🔢 **Code PIN : `${data.pin}`**\n\n` +
+            `Utilise ce code sur ${API_URL} pour voter aux sessions !\n\n` +
+            `⚠️ Ne partage jamais ce code avec quelqu'un d'autre.`
+          );
+          await message.reply('✅ Je t\'ai envoyé ton code PIN en message privé !');
+        } catch (dmError) {
+          // Si impossible d'envoyer en DM, répondre publiquement (risqué mais mieux que rien)
+          await message.reply(
+            `❌ Je ne peux pas t'envoyer de message privé.\n` +
+            `🔐 Ton code PIN : ||${data.pin}|| (clique pour révéler)\n` +
+            `⚠️ Supprime ce message après l'avoir noté !`
+          );
+        }
+      } else {
+        await message.reply(
+          `❌ **Aucun code PIN trouvé**\n\n` +
+          `Tu n'es pas encore mappé à un joueur du site.\n` +
+          `Demande à un admin de te mapper sur ${API_URL}/dashboard/discord`
+        );
+      }
+    } catch (error) {
+      console.error('Erreur récupération PIN:', error);
+      await message.reply('❌ Erreur lors de la récupération de ton code PIN.');
+    }
   }
 });
 
