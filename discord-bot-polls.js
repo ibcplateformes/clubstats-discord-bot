@@ -372,9 +372,8 @@ client.on('interactionCreate', async (interaction) => {
       console.log(`✅ Vote enregistré: ${username} -> ${apiResponse}`);
 
       // Attendre 1 seconde pour que l'API se synchronise, puis mettre à jour
-      setTimeout(async () => {
-        await updatePollMessage(interaction.message, sessionId);
-      }, 1000);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await updatePollMessage(interaction.message, sessionId);
     } else {
       await interaction.reply({
         content: `❌ Erreur: ${result.error}`,
