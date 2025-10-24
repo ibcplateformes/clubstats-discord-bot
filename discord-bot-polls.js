@@ -7,7 +7,7 @@ const http = require('http');
 const PORT = process.env.PORT || 10000;
 const server = http.createServer(async (req, res) => {
   // Webhook pour recevoir les notifications de sessions
-  if (req.method === 'POST' && req.url === '/webhook/session') {
+  if (req.method === 'POST' && (req.url === '/webhook/session' || req.url === '/notify')) {
     let body = '';
     req.on('data', chunk => {
       body += chunk.toString();
@@ -15,12 +15,13 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const data = JSON.parse(body);
-        const { sessionId, action } = data;
+        const { sessionId, action, type } = data;
+        const eventType = action || type; // Supporter les deux formats
         
-        console.log(`🔔 Notification reçue: ${action} - Session ${sessionId}`);
+        console.log(`🔔 Notification reçue: ${eventType} - Session ${sessionId}`);
         
         // Créer ou mettre à jour le sondage Discord
-        if (action === 'created' || action === 'updated') {
+        if (eventType === 'created' || eventType === 'updated') {
           await handleSessionNotification(sessionId);
         }
         
@@ -351,23 +352,29 @@ client.on('interactionCreate', async (interaction) => {
   console.log(`📝 Vote reçu: ${username} (ID: ${userId}) -> ${response} pour session ${sessionId}`);
 
   try {
-    const result = await sendVoteToAPI(sessionId, userId, username, response);
+    // Mapper "maybe" vers "late" pour l'API
+    const apiResponse = response === 'maybe' ? 'late' : response;
+    
+    const result = await sendVoteToAPI(sessionId, userId, username, apiResponse);
 
     if (result.success) {
       const responseText = {
         present: '✅ Présent',
         absent: '❌ Absent',
-        late: '🟡 Retard'
-      }[response];
+        maybe: '❓ Peut-être'
+      }[response] || '🟡 Retard';
 
       await interaction.reply({
         content: `✅ Ton vote **"${responseText}"** a été enregistré avec succès !`,
         ephemeral: true
       });
 
-      console.log(`✅ Vote enregistré: ${username} -> ${response}`);
+      console.log(`✅ Vote enregistré: ${username} -> ${apiResponse}`);
 
-      await updatePollMessage(interaction.message, sessionId);
+      // Attendre 1 seconde pour que l'API se synchronise, puis mettre à jour
+      setTimeout(async () => {
+        await updatePollMessage(interaction.message, sessionId);
+      }, 1000);
     } else {
       await interaction.reply({
         content: `❌ Erreur: ${result.error}`,
@@ -818,9 +825,9 @@ async function checkAndUpdateSessions() {
 }
 
 function startSessionPolling() {
-  // Polling toutes les 60 secondes (au lieu de 10) pour éviter de surcharger l'API
-  setInterval(checkAndUpdateSessions, 60000);
-  console.log('✅ Polling automatique activé (toutes les 60 secondes)');
+  // Polling toutes les 10 secondes pour une mise à jour rapide
+  setInterval(checkAndUpdateSessions, 10000);
+  console.log('✅ Polling automatique activé (toutes les 10 secondes)');
 }
 
 // ========================================
