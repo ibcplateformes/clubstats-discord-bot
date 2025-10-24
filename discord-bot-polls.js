@@ -82,11 +82,18 @@ const sessionStats = new Map(); // sessionId -> { total, present, absent, late }
 
 async function getActiveSessions() {
   try {
+    // Timeout de 30 secondes pour laisser le temps à Render de se réveiller
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
     const response = await fetch(`${API_URL}/api/discord/sessions`, {
       headers: {
         'x-api-key': API_KEY
-      }
+      },
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
@@ -249,8 +256,8 @@ function createPollButtons(sessionId) {
         .setLabel('❌ Absent')
         .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
-        .setCustomId(`vote_late_${sessionId}`)
-        .setLabel('🟡 Retard')
+        .setCustomId(`vote_maybe_${sessionId}`)
+        .setLabel('❓ Peut-être')
         .setStyle(ButtonStyle.Primary)
     );
 }
@@ -811,9 +818,9 @@ async function checkAndUpdateSessions() {
 }
 
 function startSessionPolling() {
-  // Polling toutes les 10 secondes
-  setInterval(checkAndUpdateSessions, 10000);
-  console.log('✅ Polling automatique activé (toutes les 10 secondes)');
+  // Polling toutes les 60 secondes (au lieu de 10) pour éviter de surcharger l'API
+  setInterval(checkAndUpdateSessions, 60000);
+  console.log('✅ Polling automatique activé (toutes les 60 secondes)');
 }
 
 // ========================================
