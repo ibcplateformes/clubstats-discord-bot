@@ -371,9 +371,8 @@ client.on('interactionCreate', async (interaction) => {
 
       console.log(`✅ Vote enregistré: ${username} -> ${apiResponse}`);
 
-      // Attendre 1 seconde pour que l'API se synchronise, puis mettre à jour
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      await updatePollMessage(interaction.message, sessionId);
+      // Le webhook /notify va mettre à jour Discord automatiquement
+      // Pas besoin d'attendre ici, le polling s'en occupe
     } else {
       await interaction.reply({
         content: `❌ Erreur: ${result.error}`,
