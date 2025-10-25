@@ -77,3 +77,19 @@ model PlayerVote {
   @@index([playerId])
   @@map("player_votes")
 }
+
+// Votes simples (système léger sans lien direct avec Player)
+model Vote {
+  id          String   @id @default(cuid())
+  sessionId   String   @map("session_id")
+  playerName  String   @map("player_name")
+  playerEmail String?  @map("player_email")
+  response    String   // "present", "absent", "maybe", "late"
+  comment     String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([sessionId])
+  @@index([playerName])
+  @@map("votes")
+}
