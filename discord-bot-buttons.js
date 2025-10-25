@@ -157,15 +157,46 @@ async function getActiveSessions() {
           }
         });
 
+        // Récupérer les votes Discord
+        const discordVotes = await prisma.vote.findMany({
+          where: {
+            sessionId: session.id
+          }
+        });
+
+        // Combiner les deux types de votes
+        const allVotesMap = new Map();
+        
+        // Ajouter les votes Discord
+        discordVotes.forEach(v => {
+          allVotesMap.set(v.playerName.toLowerCase(), {
+            playerName: v.playerName,
+            response: v.response,
+            player: null
+          });
+        });
+        
+        // Ajouter/remplacer avec les votes du site
+        session.votes.forEach(v => {
+          const playerName = v.player?.name || 'Joueur supprimé';
+          allVotesMap.set(playerName.toLowerCase(), {
+            playerName: playerName,
+            response: v.status,
+            player: v.player
+          });
+        });
+        
+        const combinedVotes = Array.from(allVotesMap.values());
         const voterIds = session.votes.map(v => v.playerId);
         const missingPlayers = allPlayers.filter(p => !voterIds.includes(p.id));
 
         return {
           ...session,
+          votes: combinedVotes,
           allPlayers,
           missingPlayers,
           totalPlayers: allPlayers.length,
-          totalVotes: session.votes.length
+          totalVotes: combinedVotes.length
         };
       })
     );
@@ -218,7 +249,7 @@ function createSessionEmbed(session) {
   if (presentVotes.length > 0) {
     const presentList = presentVotes
       .slice(0, 10)
-      .map(v => v.player?.name || v.playerName)
+      .map(v => v.playerName || v.player?.name || 'Inconnu')
       .join(', ');
     
     embed.addFields({
@@ -231,7 +262,7 @@ function createSessionEmbed(session) {
   if (lateVotes.length > 0) {
     const lateList = lateVotes
       .slice(0, 10)
-      .map(v => v.player?.name || v.playerName)
+      .map(v => v.playerName || v.player?.name || 'Inconnu')
       .join(', ');
     
     embed.addFields({
@@ -244,7 +275,7 @@ function createSessionEmbed(session) {
   if (absentVotes.length > 0) {
     const absentList = absentVotes
       .slice(0, 10)
-      .map(v => v.player?.name || v.playerName)
+      .map(v => v.playerName || v.player?.name || 'Inconnu')
       .join(', ');
     
     embed.addFields({
