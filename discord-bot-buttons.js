@@ -771,7 +771,7 @@ client.on('messageCreate', async (message) => {
       });
 
       if (res.ok) {
-        await message.reply(`✅ Session `${sessionId}` fermée !`);
+        await message.reply('✅ Session `' + sessionId + '` fermée !');
       } else {
         await message.reply('❌ Session introuvable.');
       }
@@ -801,7 +801,7 @@ client.on('messageCreate', async (message) => {
       });
 
       if (res.ok) {
-        await message.reply(`✅ Session `${sessionId}` ouverte !`);
+        await message.reply('✅ Session `' + sessionId + '` ouverte !');
       } else {
         await message.reply('❌ Session introuvable.');
       }
@@ -829,7 +829,7 @@ client.on('messageCreate', async (message) => {
       });
 
       if (res.ok) {
-        await message.reply(`✅ Session `${sessionId}` supprimée !`);
+        await message.reply('✅ Session `' + sessionId + '` supprimée !');
       } else {
         await message.reply('❌ Session introuvable.');
       }
@@ -948,7 +948,7 @@ client.on('messageCreate', async (message) => {
         `✅ **Lien créé !**\n\n` +
         `Discord: **${mention.username}**\n` +
         `Joueur: **${player.name}**\n\n` +
-        `${mention} peut maintenant utiliser `!moncode` pour récupérer son PIN !`
+        `${mention} peut maintenant utiliser \`!moncode\` pour récupérer son PIN !`
       );
     } catch (error) {
       console.error('Erreur !lier:', error);
