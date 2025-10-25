@@ -883,7 +883,7 @@ client.on('messageCreate', async (message) => {
         `✅ **Code PIN généré !**\n\n` +
         `Joueur: **${player.name}**\n` +
         `Code PIN: **${pin}**\n\n` +
-        `Le joueur peut récupérer son code avec `!moncode``
+        'Le joueur peut récupérer son code avec `!moncode`'
       );
     } catch (error) {
       console.error('Erreur !genererpin:', error);
