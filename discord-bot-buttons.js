@@ -227,7 +227,7 @@ function createSessionEmbed(session) {
     ? Math.round((session.totalVotes / session.totalPlayers) * 100)
     : 0;
 
-  const voteLink = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3003'}/vote/${session.id}`;
+  const voteLink = `${API_URL}/vote/${session.id}`;
 
   const embed = new EmbedBuilder()
     .setColor(participationRate < 50 ? 0xFF0000 : participationRate < 80 ? 0xFFA500 : 0x00FF00)
@@ -496,7 +496,7 @@ client.on('messageCreate', async (message) => {
         const participationRate = session.totalPlayers > 0 
           ? Math.round((session.totalVotes / session.totalPlayers) * 100)
           : 0;
-        const voteLink = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3003'}/vote/${session.id}`;
+        const voteLink = `${API_URL}/vote/${session.id}`;
         
         let pingMessage = '🔔 **RAPPEL MANUEL** 🔔\n\n';
         pingMessage += `🗳️ **${session.title}**\n`;
