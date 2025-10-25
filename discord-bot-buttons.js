@@ -728,16 +728,12 @@ client.on('messageCreate', async (message) => {
         if (res.ok) {
           const data = await res.json();
           await m.reply(
-            '✅ **Session créée avec succès !**
-
-' +
+            '✅ **Session créée avec succès !**\n\n' +
             `🎯 Titre: **${title}**\n` +
             `📅 Date: ${date} \u00e0 ${time}\n` +
             `📍 Lieu: ${location || 'Non spécifié'}\n\n` +
-            'ID: `' + data.session.id + '`
-
-' +
-            'Utilisez `!rappel` pour envoyer un rappel aux joueurs !'
+            'ID: `' + data.session.id + '`\n\n' +
+            'Utilisez `!rappel` pour envoyer un rappel aux joueurs!'
           );
         } else {
           await m.reply('❌ Erreur lors de la création de la session.');
