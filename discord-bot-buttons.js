@@ -53,6 +53,7 @@ const voteMessages = new Map();
 async function syncVoteToAPI(sessionId, userId, username, response) {
   try {
     console.log(`🔄 Synchronisation vote: ${username} → ${response} (session: ${sessionId})`);
+    console.log(`🌐 URL: ${API_URL}/api/discord/sync-vote`);
     
     const res = await fetch(`${API_URL}/api/discord/sync-vote`, {
       method: 'POST',
@@ -67,6 +68,25 @@ async function syncVoteToAPI(sessionId, userId, username, response) {
         response
       })
     });
+
+    console.log(`📊 Status code: ${res.status}`);
+    
+    // Vérifier si la réponse est OK avant de parser
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`❌ Réponse HTTP ${res.status}:`, text.substring(0, 200));
+      return { success: false, error: `HTTP ${res.status}` };
+    }
+    
+    const contentType = res.headers.get('content-type');
+    console.log(`📝 Content-Type: ${contentType}`);
+    
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await res.text();
+      console.error(`❌ Pas de JSON reçu, Content-Type: ${contentType}`);
+      console.error(`📄 Corps de la réponse:`, text.substring(0, 200));
+      return { success: false, error: 'Response is not JSON' };
+    }
 
     const data = await res.json();
     
@@ -94,7 +114,7 @@ client.once('ready', () => {
   console.log(`📢 Canal de rappels: ${CHANNEL_ID}`);
   console.log(`🌐 API URL: ${API_URL}`);
   console.log('✅ Le bot est opérationnel !');
-  console.log('🔘 Mode BOUTONS activé');
+  console.log('🔘 Mode BOUTONS activé - v3.0.1');
   console.log('');
   console.log('⏰ Rappels automatiques programmés :');
   console.log('   • 10h00 (heure de Paris)');
