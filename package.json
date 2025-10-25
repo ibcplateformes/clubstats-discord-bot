@@ -10,7 +10,8 @@
     "start:auto": "node discord-bot-auto.js",
     "start:polls": "node discord-bot-polls.js",
     "dev": "node discord-bot-buttons.js",
-    "test": "node discord-bot-buttons.js"
+    "test": "node discord-bot-buttons.js",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
