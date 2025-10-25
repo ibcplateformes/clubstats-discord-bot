@@ -45,9 +45,16 @@ const client = new Client({
 // Configuration
 const PREFIX = '!';
 const CHANNEL_ID = process.env.DISCORD_CHANNEL_ID;
+const ADMIN_ROLE_NAMES = (process.env.ADMIN_ROLE_NAMES || 'Admin').split(',').map(r => r.trim());
 
 // Map pour suivre les messages de vote (messageId -> sessionId)
 const voteMessages = new Map();
+
+// Fonction pour vérifier si un utilisateur est admin
+function isAdmin(member) {
+  if (!member || !member.roles) return false;
+  return member.roles.cache.some(role => ADMIN_ROLE_NAMES.includes(role.name));
+}
 
 // Fonction pour synchroniser un vote avec l'API
 async function syncVoteToAPI(sessionId, userId, username, response) {
@@ -555,6 +562,438 @@ client.on('messageCreate', async (message) => {
     }
   }
 
+  // Commande: !moncode - Récupérer son code PIN
+  if (command === 'moncode') {
+    try {
+      const discordUsername = message.author.username;
+      
+      // Chercher le mapping Discord -> Player
+      const mapping = await prisma.discordPlayerMapping.findUnique({
+        where: {
+          discordUsername: discordUsername
+        },
+        include: {
+          player: true
+        }
+      });
+
+      if (!mapping || !mapping.player) {
+        return message.reply(
+          '❌ **Aucun code PIN trouvé**\n\n' +
+          'Ton compte Discord n\'est pas encore lié \u00e0 un joueur.\n' +
+          'Demande \u00e0 un admin de créer le lien ou utilise le site web pour voter.'
+        );
+      }
+
+      if (!mapping.player.pin) {
+        return message.reply(
+          '⚠️ **Code PIN non défini**\n\n' +
+          `Ton compte est lié au joueur **${mapping.player.name}** mais aucun code PIN n'a été généré.\n` +
+          'Demande \u00e0 un admin de générer un code PIN pour toi.'
+        );
+      }
+
+      // Envoyer le code en message privé
+      try {
+        await message.author.send(
+          `🔑 **Ton code PIN personnel**\n\n` +
+          `Joueur: **${mapping.player.name}**\n` +
+          `Code PIN: **${mapping.player.pin}**\n\n` +
+          `🔒 Utilise ce code pour voter sur le site web: ${API_URL}/vote\n\n` +
+          `⚠️ Ne partage jamais ton code PIN avec quelqu'un d'autre !`
+        );
+        
+        await message.reply('✅ Je t\'ai envoyé ton code PIN en message privé ! Vérifie tes DMs.');
+      } catch (dmError) {
+        // Si l'envoi en DM échoue (DMs fermés)
+        console.error('Erreur envoi DM:', dmError);
+        await message.reply(
+          '❌ **Impossible d\'envoyer le message privé**\n\n' +
+          'Active tes messages privés ou demande \u00e0 un admin de te communiquer ton code PIN.'
+        );
+      }
+    } catch (error) {
+      console.error('Erreur !moncode:', error);
+      await message.reply('❌ Erreur lors de la récupération du code PIN.');
+    }
+  }
+
+  // ========== COMMANDES ADMIN ==========
+
+  // Commande: !clear - Nettoyer le canal
+  if (command === 'clear' || command === 'nettoyer') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      const amount = parseInt(args[0]) || 100;
+      
+      if (amount < 1 || amount > 100) {
+        return message.reply('⚠️ Spécifie un nombre entre 1 et 100.');
+      }
+
+      const fetched = await message.channel.messages.fetch({ limit: amount });
+      await message.channel.bulkDelete(fetched, true);
+      
+      const confirmMsg = await message.channel.send(`✅ ${fetched.size} message(s) supprimé(s) !`);
+      setTimeout(() => confirmMsg.delete(), 3000);
+    } catch (error) {
+      console.error('Erreur !clear:', error);
+      await message.reply('❌ Erreur lors de la suppression des messages.');
+    }
+  }
+
+  // Commande: !clearall - Nettoyer TOUT le canal
+  if (command === 'clearall') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      await message.reply('🧹 Nettoyage complet du canal en cours...');
+      
+      let deleted = 0;
+      let fetched;
+      
+      do {
+        fetched = await message.channel.messages.fetch({ limit: 100 });
+        if (fetched.size > 0) {
+          await message.channel.bulkDelete(fetched, true);
+          deleted += fetched.size;
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Pause pour éviter rate limit
+        }
+      } while (fetched.size >= 2);
+      
+      const confirmMsg = await message.channel.send(`✅ Canal nettoyé ! ${deleted} message(s) supprimé(s).`);
+      setTimeout(() => confirmMsg.delete(), 5000);
+    } catch (error) {
+      console.error('Erreur !clearall:', error);
+      await message.reply('❌ Erreur lors du nettoyage complet.');
+    }
+  }
+
+  // Commande: !creersession - Créer une session de vote
+  if (command === 'creersession') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      await message.reply(
+        '🎯 **Création d\'une session de vote**\n\n' +
+        'Format: `!creersession [titre] | [type] | [date] | [heure] | [lieu]`\n\n' +
+        '**Types disponibles:** training, match, tournament, friendly\n' +
+        '**Format date:** AAAA-MM-JJ (ex: 2025-10-27)\n' +
+        '**Format heure:** HH:MM (ex: 20:00)\n\n' +
+        '**Exemple:**\n' +
+        '`!creersession Match vs FC Goro | match | 2025-10-27 | 20:00 | Stade Municipal`'
+      );
+
+      // Attendre la réponse de l'admin
+      const filter = m => m.author.id === message.author.id && m.content.startsWith('!creersession ');
+      const collector = message.channel.createMessageCollector({ filter, time: 60000, max: 1 });
+
+      collector.on('collect', async m => {
+        const content = m.content.slice('!creersession '.length);
+        const parts = content.split('|').map(p => p.trim());
+
+        if (parts.length < 4) {
+          return m.reply('❌ Format incorrect ! Utilisez: `!creersession [titre] | [type] | [date] | [heure] | [lieu]`');
+        }
+
+        const [title, type, date, time, location] = parts;
+
+        if (!['training', 'match', 'tournament', 'friendly'].includes(type)) {
+          return m.reply('❌ Type invalide ! Utilisez: training, match, tournament ou friendly');
+        }
+
+        const dateTime = `${date}T${time}:00`;
+
+        // Créer la session via l'API
+        const res = await fetch(`${API_URL}/api/vote-sessions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            title,
+            type,
+            date: dateTime,
+            location: location || '',
+            description: `Session créée depuis Discord par ${message.author.username}`
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          await m.reply(
+            `✅ **Session créée avec succès !**\n\n` +
+            `🎯 Titre: **${title}**\n` +
+            `📅 Date: ${date} \u00e0 ${time}\n` +
+            `📍 Lieu: ${location || 'Non spécifié'}\n\n` +
+            `ID: `${data.session.id}`\n\n` +
+            `Utilisez `!rappel` pour envoyer un rappel aux joueurs !`
+          );
+        } else {
+          await m.reply('❌ Erreur lors de la création de la session.');
+        }
+      });
+
+      collector.on('end', collected => {
+        if (collected.size === 0) {
+          message.reply('⏱️ Temps écoulé ! Relancez la commande pour créer une session.');
+        }
+      });
+    } catch (error) {
+      console.error('Erreur !creersession:', error);
+      await message.reply('❌ Erreur lors de la création de la session.');
+    }
+  }
+
+  // Commande: !fermer - Fermer une session
+  if (command === 'fermer') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      const sessionId = args[0];
+      
+      if (!sessionId) {
+        return message.reply('⚠️ Spécifie l\'ID de la session ! Exemple: `!fermer cmh6lqf5e0001lspl0wzqdsta`');
+      }
+
+      const res = await fetch(`${API_URL}/api/vote-sessions/${sessionId}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: false })
+      });
+
+      if (res.ok) {
+        await message.reply(`✅ Session `${sessionId}` fermée !`);
+      } else {
+        await message.reply('❌ Session introuvable.');
+      }
+    } catch (error) {
+      console.error('Erreur !fermer:', error);
+      await message.reply('❌ Erreur lors de la fermeture de la session.');
+    }
+  }
+
+  // Commande: !ouvrir - Ouvrir une session
+  if (command === 'ouvrir') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      const sessionId = args[0];
+      
+      if (!sessionId) {
+        return message.reply('⚠️ Spécifie l\'ID de la session ! Exemple: `!ouvrir cmh6lqf5e0001lspl0wzqdsta`');
+      }
+
+      const res = await fetch(`${API_URL}/api/vote-sessions/${sessionId}/toggle`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: true })
+      });
+
+      if (res.ok) {
+        await message.reply(`✅ Session `${sessionId}` ouverte !`);
+      } else {
+        await message.reply('❌ Session introuvable.');
+      }
+    } catch (error) {
+      console.error('Erreur !ouvrir:', error);
+      await message.reply('❌ Erreur lors de l\'ouverture de la session.');
+    }
+  }
+
+  // Commande: !supprimer - Supprimer une session
+  if (command === 'supprimer') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      const sessionId = args[0];
+      
+      if (!sessionId) {
+        return message.reply('⚠️ Spécifie l\'ID de la session ! Exemple: `!supprimer cmh6lqf5e0001lspl0wzqdsta`');
+      }
+
+      const res = await fetch(`${API_URL}/api/vote-sessions/${sessionId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        await message.reply(`✅ Session `${sessionId}` supprimée !`);
+      } else {
+        await message.reply('❌ Session introuvable.');
+      }
+    } catch (error) {
+      console.error('Erreur !supprimer:', error);
+      await message.reply('❌ Erreur lors de la suppression de la session.');
+    }
+  }
+
+  // Commande: !genererpin - Générer un code PIN pour un joueur
+  if (command === 'genererpin') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      const playerName = args.join(' ');
+      
+      if (!playerName) {
+        return message.reply('⚠️ Spécifie le nom du joueur ! Exemple: `!genererpin Iniesta667ekip`');
+      }
+
+      const club = await prisma.club.findFirst();
+      if (!club) {
+        return message.reply('❌ Aucun club trouvé.');
+      }
+
+      const player = await prisma.player.findFirst({
+        where: {
+          clubId: club.id,
+          name: {
+            contains: playerName,
+            mode: 'insensitive'
+          }
+        }
+      });
+
+      if (!player) {
+        return message.reply(`❌ Joueur "${playerName}" introuvable.`);
+      }
+
+      // Générer un PIN aléatoire de 4 chiffres
+      const pin = Math.floor(1000 + Math.random() * 9000).toString();
+
+      await prisma.player.update({
+        where: { id: player.id },
+        data: { pin }
+      });
+
+      await message.reply(
+        `✅ **Code PIN généré !**\n\n` +
+        `Joueur: **${player.name}**\n` +
+        `Code PIN: **${pin}**\n\n` +
+        `Le joueur peut récupérer son code avec `!moncode``
+      );
+    } catch (error) {
+      console.error('Erreur !genererpin:', error);
+      await message.reply('❌ Erreur lors de la génération du PIN.');
+    }
+  }
+
+  // Commande: !lier - Lier un utilisateur Discord à un joueur
+  if (command === 'lier') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      if (args.length < 2) {
+        return message.reply('⚠️ Format: `!lier @utilisateur Nom_Du_Joueur`');
+      }
+
+      const mention = message.mentions.users.first();
+      if (!mention) {
+        return message.reply('❌ Vous devez mentionner un utilisateur Discord.');
+      }
+
+      const playerName = args.slice(1).join(' ');
+      
+      const club = await prisma.club.findFirst();
+      if (!club) {
+        return message.reply('❌ Aucun club trouvé.');
+      }
+
+      const player = await prisma.player.findFirst({
+        where: {
+          clubId: club.id,
+          name: {
+            contains: playerName,
+            mode: 'insensitive'
+          }
+        }
+      });
+
+      if (!player) {
+        return message.reply(`❌ Joueur "${playerName}" introuvable.`);
+      }
+
+      // Créer ou mettre à jour le mapping
+      await prisma.discordPlayerMapping.upsert({
+        where: {
+          discordUsername: mention.username
+        },
+        create: {
+          discordId: mention.id,
+          discordUsername: mention.username,
+          playerId: player.id
+        },
+        update: {
+          discordId: mention.id,
+          playerId: player.id
+        }
+      });
+
+      await message.reply(
+        `✅ **Lien créé !**\n\n` +
+        `Discord: **${mention.username}**\n` +
+        `Joueur: **${player.name}**\n\n` +
+        `${mention} peut maintenant utiliser `!moncode` pour récupérer son PIN !`
+      );
+    } catch (error) {
+      console.error('Erreur !lier:', error);
+      await message.reply('❌ Erreur lors de la création du lien.');
+    }
+  }
+
+  // Commande: !mappings - Voir tous les mappings
+  if (command === 'mappings') {
+    if (!isAdmin(message.member)) {
+      return message.reply('❌ Cette commande est réservée aux admins.');
+    }
+
+    try {
+      const mappings = await prisma.discordPlayerMapping.findMany({
+        include: {
+          player: true
+        }
+      });
+
+      if (mappings.length === 0) {
+        return message.reply('📊 Aucun mapping Discord \u2194 Joueur.');
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x00FF00)
+        .setTitle('🔗 Mappings Discord \u2194 Joueurs')
+        .setDescription(`${mappings.length} lien(s) actif(s)`)
+        .setTimestamp();
+
+      mappings.forEach((mapping, index) => {
+        embed.addFields({
+          name: `${index + 1}. ${mapping.discordUsername}`,
+          value: `Joueur: **${mapping.player.name}**\nPIN: ${mapping.player.pin ? '✅' : '❌'}`,
+          inline: true
+        });
+      });
+
+      await message.reply({ embeds: [embed] });
+    } catch (error) {
+      console.error('Erreur !mappings:', error);
+      await message.reply('❌ Erreur lors de la récupération des mappings.');
+    }
+  }
+
   // Commande: !aide
   if (command === 'aide' || command === 'help') {
     const helpEmbed = new EmbedBuilder()
@@ -564,6 +1003,7 @@ client.on('messageCreate', async (message) => {
       .addFields(
         { name: `${PREFIX}rappel`, value: 'Envoie un rappel manuel avec boutons de vote', inline: false },
         { name: `${PREFIX}sessions`, value: 'Affiche la liste de toutes les sessions de vote actives', inline: false },
+        { name: `${PREFIX}moncode`, value: 'Récupère ton code PIN personnel en message privé', inline: false },
         { name: `${PREFIX}aide`, value: 'Affiche ce message d\'aide', inline: false }
       )
       .addFields({
@@ -575,8 +1015,27 @@ client.on('messageCreate', async (message) => {
         name: '⏰ Rappels automatiques',
         value: 'Le bot envoie des rappels automatiques 3 fois par jour :\n• 10h00\n• 14h00\n• 18h00',
         inline: false
-      })
-      .setFooter({ text: 'ClubStats Pro - Bot Discord avec boutons et synchronisation API' })
+      });
+
+    // Ajouter les commandes admin si l'utilisateur est admin
+    if (isAdmin(message.member)) {
+      helpEmbed.addFields({
+        name: '🔧 Commandes Admin',
+        value: 
+          ``${PREFIX}clear [nombre]` - Supprimer X messages (max 100)\n` +
+          ``${PREFIX}clearall` - Nettoyer TOUT le canal\n` +
+          ``${PREFIX}creersession` - Créer une session de vote\n` +
+          ``${PREFIX}fermer [id]` - Fermer une session\n` +
+          ``${PREFIX}ouvrir [id]` - Ouvrir une session\n` +
+          ``${PREFIX}supprimer [id]` - Supprimer une session\n` +
+          ``${PREFIX}genererpin [joueur]` - Générer un code PIN\n` +
+          ``${PREFIX}lier @user [joueur]` - Lier Discord ↔ Joueur\n` +
+          ``${PREFIX}mappings` - Voir tous les mappings`,
+        inline: false
+      });
+    }
+
+    helpEmbed.setFooter({ text: 'ClubStats Pro - Bot Discord avec boutons et synchronisation API' })
       .setTimestamp();
 
     await message.reply({ embeds: [helpEmbed] });
