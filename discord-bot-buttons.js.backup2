@@ -215,9 +215,9 @@ async function getActiveSessions() {
   }
 }
 
-// Fonction pour formater la date avec les deux fuseaux horaires
-function formatDateWithTimezones(date) {
-  const dateFrance = new Date(date).toLocaleString('fr-FR', {
+// Fonction pour formater la date
+function formatDate(date) {
+  return new Date(date).toLocaleString('fr-FR', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -226,27 +226,6 @@ function formatDateWithTimezones(date) {
     minute: '2-digit',
     timeZone: 'Europe/Paris'
   });
-  
-  const dateSenegal = new Date(date).toLocaleString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Africa/Dakar'
-  });
-  
-  return {
-    france: dateFrance,
-    senegal: dateSenegal,
-    formatted: `🇫🇷 ${dateFrance}\n🇸🇳 ${dateSenegal}`
-  };
-}
-
-// Fonction pour formater la date (ancienne version - gardée pour compatibilité)
-function formatDate(date) {
-  return formatDateWithTimezones(date).formatted;
 }
 
 // Fonction pour créer un embed Discord avec boutons de vote
@@ -448,31 +427,10 @@ async function sendAutomaticReminders() {
         const embed = createSessionEmbed(session);
         const buttons = createVoteButtons(session.id);
         
-        // Récupérer les mappings Discord des joueurs manquants
-        const missingPlayerIds = session.missingPlayers.map(p => p.id);
-        const mappings = await prisma.discordPlayerMapping.findMany({
-          where: {
-            playerId: {
-              in: missingPlayerIds
-            }
-          }
-        });
-        
-        // Construire la liste des mentions
-        let mentions = '';
-        if (mappings.length > 0) {
-          mentions = mappings.map(m => `<@${m.discordId}>`).join(' ');
-        }
-        
         let pingMessage = `${timeEmoji} **RAPPEL ${timeText.toUpperCase()}** ${timeEmoji}\n\n`;
         pingMessage += `🗳️ **${session.title}**\n`;
         pingMessage += `📅 ${formatDate(session.date)}\n\n`;
         pingMessage += `📊 Participation : **${participationRate}%** (${session.totalVotes}/${session.totalPlayers})\n\n`;
-        
-        if (mentions) {
-          pingMessage += `🔔 **${mappings.length} joueur(s) à voter :** ${mentions}\n\n`;
-        }
-        
         pingMessage += `⏰ **Cliquez sur les boutons ci-dessous pour voter !**`;
 
         const message = await channel.send({ 
@@ -483,7 +441,7 @@ async function sendAutomaticReminders() {
         
         voteMessages.set(message.id, session.id);
         
-        console.log(`✅ Rappel envoyé pour: ${session.title} (${participationRate}% participation, ${mappings.length} mention(s))`);
+        console.log(`✅ Rappel envoyé pour: ${session.title} (${participationRate}% participation)`);
       } else {
         console.log(`ℹ️  Session "${session.title}" à 100% - pas de rappel`);
       }
@@ -547,32 +505,11 @@ client.on('messageCreate', async (message) => {
           : 0;
         const voteLink = `${API_URL}/vote/${session.id}`;
         
-        // Récupérer les mappings Discord des joueurs manquants
-        const missingPlayerIds = session.missingPlayers.map(p => p.id);
-        const mappings = await prisma.discordPlayerMapping.findMany({
-          where: {
-            playerId: {
-              in: missingPlayerIds
-            }
-          }
-        });
-        
-        // Construire la liste des mentions
-        let mentions = '';
-        if (mappings.length > 0) {
-          mentions = mappings.map(m => `<@${m.discordId}>`).join(' ');
-        }
-        
         let pingMessage = '🔔 **RAPPEL MANUEL** 🔔\n\n';
         pingMessage += `🗳️ **${session.title}**\n`;
         pingMessage += `📅 ${formatDate(session.date)}\n\n`;
         pingMessage += `📊 Participation : **${participationRate}%**\n\n`;
         pingMessage += `🔗 **Lien de vote :** ${voteLink}\n\n`;
-        
-        if (mentions) {
-          pingMessage += `🔔 **${mappings.length} joueur(s) à voter :** ${mentions}\n\n`;
-        }
-        
         pingMessage += `⏰ **Cliquez sur les boutons ci-dessous pour voter !**`;
 
         const voteMessage = await message.channel.send({ 
@@ -736,90 +673,78 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // Commande: !creersession - Créer une session de vote (SIMPLIFIÉ)
+  // Commande: !creersession - Créer une session de vote
   if (command === 'creersession') {
     if (!isAdmin(message.member)) {
       return message.reply('❌ Cette commande est réservée aux admins.');
     }
 
     try {
-      const content = args.join(' ');
-      const parts = content.split(',').map(p => p.trim());
+      await message.reply(
+        '🎯 **Création d\'une session de vote**\n\n' +
+        'Format: `!creersession [titre] | [type] | [date] | [heure] | [lieu]`\n\n' +
+        '**Types disponibles:** training, match, tournament, friendly\n' +
+        '**Format date:** AAAA-MM-JJ (ex: 2025-10-27)\n' +
+        '**Format heure:** HH:MM (ex: 20:00)\n\n' +
+        '**Exemple:**\n' +
+        '`!creersession Match vs FC Goro | match | 2025-10-27 | 20:00 | Stade Municipal`'
+      );
 
-      if (parts.length < 3) {
-        return message.reply(
-          '⚠️ **Format incorrect !**\n\n' +
-          'Format: `!creersession Nom, Date, Heure` ou `!creersession Nom, Date, Heure, Lieu`\n\n' +
-          '**Format date:** AAAA-MM-JJ (ex: 2025-10-28)\n' +
-          '**Format heure:** HH:MM (ex: 21:00)\n\n' +
-          '**Exemples:**\n' +
-          '`!creersession Match vs FC Goro, 2025-10-28, 21:00`\n' +
-          '`!creersession Entrainement, 2025-10-29, 19:00, Stade Municipal`'
-        );
-      }
+      // Attendre la réponse de l'admin
+      const filter = m => m.author.id === message.author.id && m.content.startsWith('!creersession ');
+      const collector = message.channel.createMessageCollector({ filter, time: 60000, max: 1 });
 
-      const [title, date, time, location] = parts;
-      const type = 'match'; // Type par défaut
-      const dateTime = `${date}T${time}:00`;
+      collector.on('collect', async m => {
+        const content = m.content.slice('!creersession '.length);
+        const parts = content.split('|').map(p => p.trim());
 
-      // Créer la session via l'API
-      const res = await fetch(`${API_URL}/api/vote-sessions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title,
-          type,
-          date: dateTime,
-          location: location || 'À définir',
-          description: `Session créée depuis Discord par ${message.author.username}`
-        })
+        if (parts.length < 4) {
+          return m.reply('❌ Format incorrect ! Utilisez: `!creersession [titre] | [type] | [date] | [heure] | [lieu]`');
+        }
+
+        const [title, type, date, time, location] = parts;
+
+        if (!['training', 'match', 'tournament', 'friendly'].includes(type)) {
+          return m.reply('❌ Type invalide ! Utilisez: training, match, tournament ou friendly');
+        }
+
+        const dateTime = `${date}T${time}:00`;
+
+        // Créer la session via l'API
+        const res = await fetch(`${API_URL}/api/vote-sessions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            title,
+            type,
+            date: dateTime,
+            location: location || '',
+            description: `Session créée depuis Discord par ${message.author.username}`
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          await m.reply(
+            '✅ **Session créée avec succès !**\n\n' +
+            `🎯 Titre: **${title}**\n` +
+            `📅 Date: ${date} \u00e0 ${time}\n` +
+            `📍 Lieu: ${location || 'Non spécifié'}\n\n` +
+            'ID: `' + data.session.id + '`\n\n' +
+            'Utilisez `!rappel` pour envoyer un rappel aux joueurs!'
+          );
+        } else {
+          await m.reply('❌ Erreur lors de la création de la session.');
+        }
       });
 
-      if (!res.ok) {
-        return message.reply('❌ Erreur lors de la création de la session.');
-      }
-
-      const data = await res.json();
-      
-      // Récupérer immédiatement la session créée pour afficher le sondage
-      const sessions = await getActiveSessions();
-      const newSession = sessions.find(s => s.id === data.session.id);
-      
-      if (newSession) {
-        const embed = createSessionEmbed(newSession);
-        const buttons = createVoteButtons(newSession.id);
-        const voteLink = `${API_URL}/vote/${newSession.id}`;
-        const timeInfo = formatDateWithTimezones(newSession.date);
-        
-        let successMessage = '✅ **Session créée avec succès !**\n\n';
-        successMessage += `🗳️ **${title}**\n\n`;
-        successMessage += `🕒 **Horaires:**\n`;
-        successMessage += `🇫🇷 France: ${timeInfo.france}\n`;
-        successMessage += `🇸🇳 Sénégal: ${timeInfo.senegal}\n\n`;
-        successMessage += `📍 ${location || 'À définir'}\n\n`;
-        successMessage += `🔗 **[Lien de vote](${voteLink})**\n\n`;
-        successMessage += `ID: \`${data.session.id}\`\n\n`;
-        successMessage += `**Votez avec les boutons ci-dessous !** ⬇️`;
-
-        await message.channel.send({ 
-          content: successMessage, 
-          embeds: [embed],
-          components: [buttons]
-        });
-        
-        await message.react('✅');
-      } else {
-        await message.reply(
-          '✅ **Session créée avec succès !**\n\n' +
-          `🎯 Titre: **${title}**\n` +
-          `📅 Date: ${date} à ${time}\n` +
-          `📍 Lieu: ${location || 'À définir'}\n\n` +
-          'ID: `' + data.session.id + '`\n\n' +
-          'Utilisez `!rappel` pour envoyer le sondage avec boutons!'
-        );
-      }
+      collector.on('end', collected => {
+        if (collected.size === 0) {
+          message.reply('⏱️ Temps écoulé ! Relancez la commande pour créer une session.');
+        }
+      });
     } catch (error) {
       console.error('Erreur !creersession:', error);
       await message.reply('❌ Erreur lors de la création de la session.');
@@ -846,7 +771,7 @@ client.on('messageCreate', async (message) => {
       });
 
       if (res.ok) {
-        await message.reply('✅ Session `' + sessionId + '` fermée !');
+        await message.reply(`✅ Session `${sessionId}` fermée !`);
       } else {
         await message.reply('❌ Session introuvable.');
       }
@@ -876,7 +801,7 @@ client.on('messageCreate', async (message) => {
       });
 
       if (res.ok) {
-        await message.reply('✅ Session `' + sessionId + '` ouverte !');
+        await message.reply(`✅ Session `${sessionId}` ouverte !`);
       } else {
         await message.reply('❌ Session introuvable.');
       }
@@ -904,7 +829,7 @@ client.on('messageCreate', async (message) => {
       });
 
       if (res.ok) {
-        await message.reply('✅ Session `' + sessionId + '` supprimée !');
+        await message.reply(`✅ Session `${sessionId}` supprimée !`);
       } else {
         await message.reply('❌ Session introuvable.');
       }
@@ -958,7 +883,7 @@ client.on('messageCreate', async (message) => {
         `✅ **Code PIN généré !**\n\n` +
         `Joueur: **${player.name}**\n` +
         `Code PIN: **${pin}**\n\n` +
-        'Le joueur peut récupérer son code avec `!moncode`'
+        `Le joueur peut récupérer son code avec `!moncode``
       );
     } catch (error) {
       console.error('Erreur !genererpin:', error);
@@ -1023,7 +948,7 @@ client.on('messageCreate', async (message) => {
         `✅ **Lien créé !**\n\n` +
         `Discord: **${mention.username}**\n` +
         `Joueur: **${player.name}**\n\n` +
-        `${mention} peut maintenant utiliser \`!moncode\` pour récupérer son PIN !`
+        `${mention} peut maintenant utiliser `!moncode` pour récupérer son PIN !`
       );
     } catch (error) {
       console.error('Erreur !lier:', error);
@@ -1097,15 +1022,15 @@ client.on('messageCreate', async (message) => {
       helpEmbed.addFields({
         name: '🔧 Commandes Admin',
         value: 
-          `\`${PREFIX}clear [nombre]\` - Supprimer X messages (max 100)\n` +
-          `\`${PREFIX}clearall\` - Nettoyer TOUT le canal\n` +
-          `\`${PREFIX}creersession Nom, Date, Heure, [Lieu]\` - Créer session (ex: Match, 2025-10-28, 21:00)\n` +
-          `\`${PREFIX}fermer [id]\` - Fermer une session\n` +
-          `\`${PREFIX}ouvrir [id]\` - Ouvrir une session\n` +
-          `\`${PREFIX}supprimer [id]\` - Supprimer une session\n` +
-          `\`${PREFIX}genererpin [joueur]\` - Générer un code PIN\n` +
-          `\`${PREFIX}lier @user [joueur]\` - Lier Discord ↔ Joueur\n` +
-          `\`${PREFIX}mappings\` - Voir tous les mappings`,
+          ``${PREFIX}clear [nombre]` - Supprimer X messages (max 100)\n` +
+          ``${PREFIX}clearall` - Nettoyer TOUT le canal\n` +
+          ``${PREFIX}creersession` - Créer une session de vote\n` +
+          ``${PREFIX}fermer [id]` - Fermer une session\n` +
+          ``${PREFIX}ouvrir [id]` - Ouvrir une session\n` +
+          ``${PREFIX}supprimer [id]` - Supprimer une session\n` +
+          ``${PREFIX}genererpin [joueur]` - Générer un code PIN\n` +
+          ``${PREFIX}lier @user [joueur]` - Lier Discord ↔ Joueur\n` +
+          ``${PREFIX}mappings` - Voir tous les mappings`,
         inline: false
       });
     }
