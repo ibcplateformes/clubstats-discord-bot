@@ -1022,15 +1022,15 @@ client.on('messageCreate', async (message) => {
       helpEmbed.addFields({
         name: '🔧 Commandes Admin',
         value: 
-          `${PREFIX}clear [nombre]` - Supprimer X messages (max 100)\n` +
-          `${PREFIX}clearall` - Nettoyer TOUT le canal\n` +
-          `${PREFIX}creersession` - Créer une session de vote\n` +
-          `${PREFIX}fermer [id]` - Fermer une session\n` +
-          `${PREFIX}ouvrir [id]` - Ouvrir une session\n` +
-          `${PREFIX}supprimer [id]` - Supprimer une session\n` +
-          `${PREFIX}genererpin [joueur]` - Générer un code PIN\n` +
-          `${PREFIX}lier @user [joueur]` - Lier Discord ↔ Joueur\n` +
-          `${PREFIX}mappings` - Voir tous les mappings`,
+          `\`${PREFIX}clear [nombre]\` - Supprimer X messages (max 100)\n` +
+          `\`${PREFIX}clearall\` - Nettoyer TOUT le canal\n` +
+          `\`${PREFIX}creersession\` - Créer une session de vote\n` +
+          `\`${PREFIX}fermer [id]\` - Fermer une session\n` +
+          `\`${PREFIX}ouvrir [id]\` - Ouvrir une session\n` +
+          `\`${PREFIX}supprimer [id]\` - Supprimer une session\n` +
+          `\`${PREFIX}genererpin [joueur]\` - Générer un code PIN\n` +
+          `\`${PREFIX}lier @user [joueur]\` - Lier Discord ↔ Joueur\n` +
+          `\`${PREFIX}mappings\` - Voir tous les mappings`,
         inline: false
       });
     }
