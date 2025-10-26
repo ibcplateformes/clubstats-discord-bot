@@ -27,10 +27,12 @@ model Player {
   clubId        String              @map("club_id")
   name          String
   position      String?
+  pin           String?             // Code PIN pour voter
   createdAt     DateTime            @default(now()) @map("created_at")
   updatedAt     DateTime            @updatedAt @map("updated_at")
   club          Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
   playerVotes   PlayerVote[]
+  discordMapping DiscordPlayerMapping?
 
   @@index([clubId])
   @@map("players")
@@ -92,4 +94,20 @@ model Vote {
   @@index([sessionId])
   @@index([playerName])
   @@map("votes")
+}
+
+// Mapping Discord <-> Player
+model DiscordPlayerMapping {
+  id              String   @id @default(cuid())
+  discordId       String   @map("discord_id")
+  discordUsername String   @unique @map("discord_username")
+  playerId        String   @unique @map("player_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([discordId])
+  @@index([playerId])
+  @@map("discord_player_mappings")
 }
