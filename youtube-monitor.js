@@ -1,6 +1,9 @@
 // Module de surveillance des lives YouTube
 // Vérifie toutes les 3 minutes si un joueur est en live
 
+// Import de node-fetch pour les requêtes HTTP
+const fetch = require('node-fetch');
+
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 const YOUTUBE_CHECK_INTERVAL = 3 * 60 * 1000; // 3 minutes
 const CLUBSTATS_API_URL = process.env.CLUBSTATS_API_URL || 'https://clubstats-pro.onrender.com';
