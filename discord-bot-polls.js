@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder
 const cron = require('node-cron');
 const http = require('http');
 const { startYouTubeMonitoring, stopYouTubeMonitoring } = require('./youtube-monitor');
+const { startTwitchMonitoring, stopTwitchMonitoring } = require('./twitch-monitor');
 
 // Serveur HTTP pour keep-alive et webhooks
 const PORT = process.env.PORT || 10000;
@@ -854,6 +855,10 @@ client.once('ready', async () => {
   startYouTubeMonitoring(client);
   console.log('🎬 Surveillance YouTube démarrée');
   
+  // Démarrer la surveillance Twitch
+  startTwitchMonitoring(client);
+  console.log('🟪 Surveillance Twitch démarrée');
+  
   // Récupérer les messages récents pour remplir la Map
   if (CHANNEL_ID) {
     try {
@@ -897,6 +902,7 @@ process.on('unhandledRejection', error => {
 process.on('SIGINT', () => {
   console.log('\n👋 Arrêt du bot...');
   stopYouTubeMonitoring();
+  stopTwitchMonitoring();
   client.destroy();
   process.exit(0);
 });
