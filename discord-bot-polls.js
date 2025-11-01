@@ -2,7 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const cron = require('node-cron');
 const http = require('http');
-const { startYouTubeMonitoring, stopYouTubeMonitoring } = require('./youtube-monitor');
+// const { startYouTubeMonitoring, stopYouTubeMonitoring } = require('./youtube-monitor'); // TEMPORAIREMENT DÉSACTIVÉ
 
 // Serveur HTTP pour keep-alive et webhooks
 const PORT = process.env.PORT || 10000;
@@ -850,9 +850,9 @@ client.once('ready', async () => {
   startAutomaticCleanup();
   startSessionPolling(); // Démarrer le polling automatique
   
-  // Démarrer la surveillance YouTube
-  startYouTubeMonitoring(client);
-  console.log('🎬 Surveillance YouTube démarrée');
+  // Démarrer la surveillance YouTube - TEMPORAIREMENT DÉSACTIVÉ
+  // startYouTubeMonitoring(client);
+  // console.log('🎬 Surveillance YouTube démarrée');
   
   // Récupérer les messages récents pour remplir la Map
   if (CHANNEL_ID) {
@@ -896,7 +896,7 @@ process.on('unhandledRejection', error => {
 
 process.on('SIGINT', () => {
   console.log('\n👋 Arrêt du bot...');
-  stopYouTubeMonitoring();
+  // stopYouTubeMonitoring(); // TEMPORAIREMENT DÉSACTIVÉ
   client.destroy();
   process.exit(0);
 });
