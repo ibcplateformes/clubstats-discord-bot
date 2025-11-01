@@ -4,12 +4,12 @@
   "description": "Bot Discord pour les rappels de vote ClubStats avec synchronisation API",
   "main": "discord-bot-complete.js",
   "scripts": {
-    "start": "node discord-bot-polls.js",
+    "start": "node discord-bot-buttons.js",
     "start:buttons": "node discord-bot-buttons.js",
     "start:complete": "node discord-bot-complete.js",
     "start:auto": "node discord-bot-auto.js",
     "start:polls": "node discord-bot-polls.js",
-    "dev": "node discord-bot-polls.js",
+    "dev": "node discord-bot-buttons.js",
     "test": "node discord-bot-buttons.js",
     "postinstall": "prisma generate"
   },
