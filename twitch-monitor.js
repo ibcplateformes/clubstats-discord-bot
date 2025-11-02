@@ -9,6 +9,13 @@ const TWITCH_CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 const TWITCH_CHECK_INTERVAL = 3 * 60 * 1000; // 3 minutes
 const CLUBSTATS_API_URL = process.env.CLUBSTATS_API_URL || 'https://clubstats-pro.onrender.com';
 
+// DEBUG - Log pour vérifier les credentials
+console.log('🔐 DEBUG Twitch credentials:');
+console.log('  CLIENT_ID présent:', !!TWITCH_CLIENT_ID);
+console.log('  CLIENT_ID (10 premiers):', TWITCH_CLIENT_ID ? TWITCH_CLIENT_ID.substring(0, 10) : 'MISSING');
+console.log('  CLIENT_SECRET présent:', !!TWITCH_CLIENT_SECRET);
+console.log('  CLIENT_SECRET (10 premiers):', TWITCH_CLIENT_SECRET ? TWITCH_CLIENT_SECRET.substring(0, 10) : 'MISSING');
+
 let checkInterval = null;
 let twitchAccessToken = null;
 let tokenExpiresAt = null;
